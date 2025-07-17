@@ -1,0 +1,7 @@
+trained/
+__pycache__/
+*.py[cod]
+instructions_claude.txt
+Data/caltech101
+Data/cifar-10-batches-py
+Data/MNIST

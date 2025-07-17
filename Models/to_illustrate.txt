@@ -1,0 +1,38 @@
+Here'a a followup to our additive model paper that I'm quite excited about:
+https://arxiv.org/abs/2504.19983
+arXiv.orgarXiv.org
+Emergence and scaling laws in SGD learning of shallow neural networks
+We study the complexity of online stochastic gradient descent (SGD) for learning a two-layer neural network with $P$ neurons
+on isotropic Gaussian data: $f_*(\boldsymbol{x}) = \sum_{p=1}^P a_p\cdot σ(\langle\boldsymbol{x},\boldsymbol{v}_p^*\rangle)$,
+$\boldsymbol{x} \sim \mathcal{N}(0,\boldsymbol{I}_d)$, where the activation $σ:\mathbb{R}\to\mathbb{R}$ is an even function
+with information exponent $k_*>2$ (defined as the lowest degree in the Hermite expansion), $\{\boldsymbol{v}^*_p\}_{p\in[P]}\subset
+\mathbb{R}^d$ are orthonormal signal directions, and the non-negative second-layer coefficients satisfy $\sum_{p} a_p^2=1$.
+We focus on the challenging ``extensive-width'' regime $P\gg 1$ and permit diverging condition number in the second-layer,
+covering as a special case the power-law scaling $a_p\asymp p^{-β}$ where $β\in\mathbb{R}_{\ge 0}$. We provide a precise analysis
+of SGD dynamics for the training of a student two-layer network to minimize the mean squared error (MSE) objective, and explicitly
+identify sharp transition times to recover each signal direction. In the power-law setting, we characterize scaling law exponents
+for the MSE loss with respect to the number of training samples and SGD steps, as well as the number of parameters in the student
+neural network. Our analysis entails that while the learning of individual teacher neurons exhibits abrupt transitions, the
+juxtaposition of $P\gg 1$ emergent learning curves at different timescales leads to a smooth scaling law in the cumulative objective.
+
+
+
+
+Regression Extensions:
+- Time Series Forecasting: Predicting values over time with temporal dependencies.
+- Quantile Regression: Estimating conditional quantiles (e.g., median).
+- Bayesian Regression: Providing uncertainty estimates in predictions.
+- Polynomial Regression: Modeling non-linear relationships.
+- Ridge/Lasso Regression: Regularized versions to prevent overfitting.
+
+Classification Extensions:
+- Multi-class Classification: More than two categories.
+- Multi-label Classification: Instances can belong to multiple categories.
+- Imbalanced Classification: Handling skewed class distributions.
+- Hierarchical Classification: Classes have a tree-like structure.
+- Cost-sensitive Classification: Different misclassification costs.
+- Ordinal Classification: Classes have an inherent order.
+
+
+
+weights and biais initializers per layer instead of globally
