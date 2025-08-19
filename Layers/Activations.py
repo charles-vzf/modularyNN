@@ -225,6 +225,276 @@ class GELU(BaseLayer):
         return error_tensor * gelu_gradient
 
 
+class TrainableActivation(BaseLayer):
+    """
+    Base class for trainable activation functions.
+    Extends BaseLayer to support parameter optimization.
+    """
+    def __init__(self):
+        super().__init__()
+        self.trainable = True
+        self._optimizer = None
+        self.gradient_weights = None
+    
+    @property 
+    def optimizer(self):
+        return self._optimizer
+    
+    @optimizer.setter
+    def optimizer(self, optimizer):
+        self._optimizer = optimizer
+    
+    def initialize(self, weights_initializer, bias_initializer):
+        """Initialize trainable parameters using provided initializers"""
+        pass
+    
+    def should_update_parameters(self):
+        """Check if parameters should be updated (trainable and optimizer available)"""
+        return self.trainable and self._optimizer is not None
+
+
+class Pic(TrainableActivation):
+    """
+    Trainable Pic activation function with unified smoothness control.
+    
+    pic(x, theta, gamma) is a piecewise linear function from [0,1] -> [0,1] that:
+    - Equals 0 at x=0 and x=1
+    - Equals 1 at x=theta 
+    - Has controllable smoothness via gamma parameter
+    
+    Parameters:
+        theta: trainable parameter in (0, 1), position of the peak
+        gamma: smoothness parameter (0 = piecewise linear, 1 = fully smooth)
+        
+    Mathematical definition:
+    - When gamma=0: Sharp piecewise linear pic function
+    - When gamma>0: Smooth approximation using sigmoid transitions
+    """
+    
+    def __init__(self, theta_init=0.5, gamma=0.0, alpha=10.0, trainable=True):
+        super().__init__()
+        # Initialize theta, ensuring it stays in (0, 1)
+        self.theta = np.clip(theta_init, 0.01, 0.99)
+        self.initial_theta = self.theta  # Store initial value for non-trainable layers
+        self.gamma = np.clip(gamma, 0.0, 1.0)  # Smoothness parameter
+        self.alpha = alpha  # Controls transition sharpness when gamma > 0
+        self.trainable = trainable  # Override the default trainable=True from TrainableActivation
+        self.input_tensor = None
+        self.gradient_weights = None
+        
+        # Cache for smooth version
+        self.transition = None
+        
+    def initialize(self, weights_initializer, bias_initializer):
+        """Initialize theta parameter"""
+        if weights_initializer:
+            # Use initializer to set theta
+            init_value = weights_initializer.initialize((1,), 1, 1)[0]
+            # Transform to [0, 1] range and clip
+            self.theta = np.clip(0.5 + 0.4 * np.tanh(init_value), 0.01, 0.99)
+            self.initial_theta = self.theta  # Update initial value after initialization
+    
+    def _piecewise_linear_pic(self, x):
+        """Original piecewise linear pic function"""
+        return np.where(
+            x <= self.theta,
+            x / self.theta,  # Rising phase: x / theta
+            (1 - x) / (1 - self.theta)  # Falling phase: (1-x) / (1-theta)
+        )
+    
+    def _smooth_pic(self, x):
+        """Smooth approximation using sigmoid transitions"""
+        # Compute both parts
+        left_part = x / self.theta
+        right_part = (1 - x) / (1 - self.theta)
+        
+        # Smooth transition around theta
+        exp_term = np.exp(-self.alpha * (x - self.theta))
+        self.transition = 1 / (1 + exp_term)
+        
+        # Blend the two parts
+        return left_part * (1 - self.transition) + right_part * self.transition
+    
+    def forward(self, input_tensor):
+        """
+        Forward pass with unified smooth/sharp control.
+        
+        Args:
+            input_tensor: shape (batch_size, features) - should be in [0, 1]
+            
+        Returns:
+            output_tensor: same shape as input, values in [0, 1]
+        """
+        input_tensor = np.clip(input_tensor, 0.0, 1.0)
+        self.input_tensor = input_tensor
+        
+        if self.gamma == 0.0:
+            # Pure piecewise linear version
+            return self._piecewise_linear_pic(input_tensor)
+        elif self.gamma == 1.0:
+            # Pure smooth version
+            return self._smooth_pic(input_tensor)
+        else:
+            # Blend between piecewise and smooth
+            piecewise_output = self._piecewise_linear_pic(input_tensor)
+            smooth_output = self._smooth_pic(input_tensor)
+            return (1 - self.gamma) * piecewise_output + self.gamma * smooth_output
+    
+    def backward(self, error_tensor):
+        """
+        Backward pass computing gradients w.r.t. input and theta.
+        
+        Args:
+            error_tensor: gradient from next layer, shape (batch_size, features)
+            
+        Returns:
+            grad_input: gradient w.r.t. input, same shape as input
+        """
+        if self.gamma == 0.0:
+            # Piecewise linear gradients
+            grad_input = np.where(
+                self.input_tensor <= self.theta,
+                1.0 / self.theta,
+                -1.0 / (1 - self.theta)
+            )
+            
+            # Gradient w.r.t. theta (piecewise version)
+            grad_theta = np.where(
+                self.input_tensor <= self.theta,
+                -self.input_tensor / (self.theta ** 2),
+                (1 - self.input_tensor) / ((1 - self.theta) ** 2)
+            )
+            
+        elif self.gamma == 1.0:
+            # Smooth gradients
+            grad_input = self._compute_smooth_grad_input()
+            grad_theta = self._compute_smooth_grad_theta()
+            
+        else:
+            # Blended gradients
+            grad_input_pw = np.where(
+                self.input_tensor <= self.theta,
+                1.0 / self.theta,
+                -1.0 / (1 - self.theta)
+            )
+            grad_input_smooth = self._compute_smooth_grad_input()
+            grad_input = (1 - self.gamma) * grad_input_pw + self.gamma * grad_input_smooth
+            
+            grad_theta_pw = np.where(
+                self.input_tensor <= self.theta,
+                -self.input_tensor / (self.theta ** 2),
+                (1 - self.input_tensor) / ((1 - self.theta) ** 2)
+            )
+            grad_theta_smooth = self._compute_smooth_grad_theta()
+            grad_theta = (1 - self.gamma) * grad_theta_pw + self.gamma * grad_theta_smooth
+        
+        grad_input = error_tensor * grad_input
+        
+        # CRITICAL FIX: Always compute gradient_weights for theta, regardless of trainable status
+        # This is needed for gradient checking and debugging
+        self.gradient_weights = np.sum(error_tensor * grad_theta)
+        
+        # Only update theta if the layer is trainable and has an optimizer
+        if self.trainable and self.should_update_parameters():
+            # Update theta using optimizer
+            # Reshape for optimizer (expects array, not scalar)
+            theta_array = np.array([self.theta])
+            grad_array = np.array([self.gradient_weights])
+            
+            updated_theta = self._optimizer.calculate_update(theta_array, grad_array)
+            # Clip to maintain constraint theta ∈ (0, 1)
+            self.theta = np.clip(updated_theta[0], 0.01, 0.99)
+        elif not self.trainable:
+            # CRITICAL FIX: Explicitly reset theta to initial value if not trainable
+            self.theta = self.initial_theta
+        
+        return grad_input
+    
+    def _compute_smooth_grad_input(self):
+        """Compute gradient w.r.t. input for smooth version"""
+        if self.transition is None:
+            return np.zeros_like(self.input_tensor)
+            
+        # Derivative of smooth transition
+        transition_grad = (self.alpha * self.transition * (1 - self.transition))
+        
+        # Components
+        left_part = self.input_tensor / self.theta
+        right_part = (1 - self.input_tensor) / (1 - self.theta)
+        
+        # Gradient computation
+        grad_input = (
+            (1 / self.theta) * (1 - self.transition) +
+            (-1 / (1 - self.theta)) * self.transition +
+            (right_part - left_part) * transition_grad
+        )
+        
+        return grad_input
+    
+    def _compute_smooth_grad_theta(self):
+        """Compute gradient w.r.t. theta for smooth version"""
+        if self.transition is None:
+            return np.zeros_like(self.input_tensor)
+            
+        # Components
+        left_part = self.input_tensor / self.theta
+        right_part = (1 - self.input_tensor) / (1 - self.theta)
+        
+        # Gradients of left_part and right_part w.r.t. theta
+        grad_theta_left = -self.input_tensor / (self.theta ** 2)
+        grad_theta_right = (1 - self.input_tensor) / ((1 - self.theta) ** 2)
+        
+        # Gradient of sigmoid transition w.r.t. theta: d/dθ σ(α(x - θ)) = -α * σ'(α(x - θ))
+        # where σ'(z) = σ(z) * (1 - σ(z))
+        transition_grad_theta = -self.alpha * self.transition * (1 - self.transition)
+        
+        # Apply chain rule:
+        # d/dθ [left_part * (1 - σ) + right_part * σ]
+        # = grad_theta_left * (1 - σ) + left_part * (-transition_grad_theta) + grad_theta_right * σ + right_part * transition_grad_theta
+        # = grad_theta_left * (1 - σ) + grad_theta_right * σ + (right_part - left_part) * transition_grad_theta
+        
+        grad_theta = (
+            grad_theta_left * (1 - self.transition) +
+            grad_theta_right * self.transition +
+            (right_part - left_part) * transition_grad_theta
+        )
+        
+        return grad_theta
+    
+    def get_params_count(self):
+        """Return number of trainable parameters (1 for theta if trainable, 0 otherwise)"""
+        return 1 if self.trainable else 0
+    
+    def get_theta(self):
+        """Get current theta value"""
+        return self.theta
+    
+    def set_theta(self, theta):
+        """Set theta value with bounds checking"""
+        self.theta = np.clip(theta, 0.01, 0.99)
+        # Update initial_theta if setting explicitly
+        if not self.trainable:
+            self.initial_theta = self.theta
+    
+    def set_gamma(self, gamma):
+        """Set smoothness parameter"""
+        self.gamma = np.clip(gamma, 0.0, 1.0)
+    
+    def set_trainable(self, trainable):
+        """Set whether the layer is trainable"""
+        was_trainable = self.trainable
+        self.trainable = bool(trainable)
+        
+        # CRITICAL FIX: When changing from trainable to non-trainable, store current theta as initial
+        if was_trainable and not self.trainable:
+            self.initial_theta = self.theta
+        # When changing from non-trainable to trainable, theta can continue from current value
+    
+    def is_trainable(self):
+        """Check if the layer is trainable"""
+        return self.trainable
+
+
 # Convenience function to get activation by name
 def get_activation(name, **kwargs):
     """
@@ -245,7 +515,8 @@ def get_activation(name, **kwargs):
         'tanh': TanH,
         'softmax': SoftMax,
         'swish': Swish,
-        'gelu': GELU
+        'gelu': GELU,
+        'pic': Pic
     }
     
     name_lower = name.lower()
@@ -258,5 +529,5 @@ def get_activation(name, **kwargs):
 # Export all activation classes
 __all__ = [
     'ReLU', 'LeakyReLU', 'ELU', 'Sigmoid', 'TanH', 'SoftMax', 
-    'Swish', 'GELU', 'get_activation'
+    'Swish', 'GELU', 'Pic', 'TrainableActivation', 'get_activation'
 ]

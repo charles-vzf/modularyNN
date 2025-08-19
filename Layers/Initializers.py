@@ -7,6 +7,11 @@ class Constant:
     def initialize(self, weights_shape, fan_in=None, fan_out=None):
         return np.full(weights_shape, self.value)
 
+class Zero:
+    """Zero initialization - initializes all weights to zero"""
+    def initialize(self, weights_shape, fan_in=None, fan_out=None):
+        return np.zeros(weights_shape, dtype=np.float32)
+
 class UniformRandom:
     def initialize(self, weights_shape, fan_in=None, fan_out=None):
         return np.random.uniform(0, 1, size=weights_shape).astype(np.float32)
@@ -20,3 +25,6 @@ class He:
     def initialize(self, weights_shape, fan_in, fan_out=None):
         stddev = np.sqrt(2 / fan_in)
         return np.random.normal(0, stddev, size=weights_shape).astype(np.float32)
+
+# Export all initializer classes
+__all__ = ['Constant', 'Zero', 'UniformRandom', 'Xavier', 'He']

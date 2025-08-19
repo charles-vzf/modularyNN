@@ -2,19 +2,23 @@
 
 ## Overview
 
-ModularyNN is a complete neural network framework implemented entirely from scratch in Python without using deep learning libraries like TensorFlow or PyTorch. It provides deep understanding of neural network internals and includes all fundamental components: layers, activation functions, optimizers, and data management utilities.
+The ModularyNN project is a neural network framework implemented entirely from scratch in Python (ie without using deep learning libraries like TensorFlow or PyTorch). It helps understanding the implementations behind neural networks (architecture, training and evaluation) and includes all fundamental components: layers, activation functions, optimizers, and data management utilities.
 
-The framework supports both **classification** and **regression** tasks with architectures ranging from simple multilayer perceptrons to complex convolutional and recurrent networks.
+The framework supports both **classification** and **regression** tasks with architectures ranging from simple **multilayer perceptrons** to complex **convolutional and recurrent networks**, like the following CNN architecture:
+
+![CNN Architecture Visualization](Models/classics/archi_cnn.png)
+*Example of CNN architecture plot showing layers, connections, and parameter counts*
 
 ## Key Features
 
-- ✅ **Complete from-scratch implementation** - No external deep learning dependencies
-- ✅ **Multi-task support** - Classification and regression with automatic detection
-- ✅ **Diverse architectures** - MLPs, CNNs, RNNs, LSTMs, and custom layers
-- ✅ **Advanced optimization** - SGD, Momentum, Adam with L1/L2 regularization
-- ✅ **Interactive visualization** - Network architecture plots and real-time training monitoring
-- ✅ **Built-in datasets** - MNIST, CIFAR-10, Caltech101, Iris, and regression datasets
-- ✅ **Comprehensive testing** - Gradient check validation and unit tests
+- **Complete from-scratch implementation** - No external deep learning dependencies
+- **Notebooks** - Interactive Jupyter notebooks that test various models, datasets, and architectures
+- **Diverse architectures** - MLPs, CNNs, RNNs, LSTMs, and custom layers
+- **Classic tunable optimizators** - SGD, Momentum, Adam with L1/L2 regularization
+- **Various activations** - Classic ReLus etc and more advanced Pic activation with learnable parameters (see [`pic_activations.md`](Layers/pic_activations.md) for mathematical background and [`test_pic_activation.ipynb`](Models/test_pic_activation.ipynb) for examples.)
+- **Interactive visualization** - Network architecture plots and real-time training monitoring
+- **Classic datasets and special regression dataset** - MNIST, CIFAR-10, Caltech101, Iris, and a regression dataset (waiting time predictions based on contextual features like weather, previous wait times, etc.)
+- **Comprehensive testing** - Gradient check validation and unit tests
 
 ## Dependencies
 
@@ -90,6 +94,11 @@ net.plot(title="MNIST Classifier")
 predictions = net.test(mnist.get_test_set()[0][:100])
 ```
 
+**Networks with <200 parameters show detailed parameter visualization**
+
+![Learned Weights Visualization](Models/classics/learned_weights_caltech_linear.png)
+*Example of learned weight visualization for a linear classifier on Caltech dataset*
+
 ### CNN for CIFAR-10
 
 ```python
@@ -140,15 +149,16 @@ history = reg_net.train(iterations=800)
 All layers inherit from `BaseLayer` and implement:
 - `forward(input_tensor)`: Forward propagation
 - `backward(error_tensor)`: Backward propagation with optional weight updates
-- `trainable`: Boolean indicating if the layer has trainable parameters
+- `trainable`: Boolean indicating if the layer has trainable parameters, which will require an optimizer to update them
 
-### Available Layers
+Available Layers are:
 - **Dense**: FullyConnected with configurable units
 - **Convolutional**: Conv for 1D/2D with stride and kernel configuration
-- **Activation**: ReLU, LeakyReLU, ELU, Sigmoid, TanH, SoftMax, Swish, GELU
+- **Pooling**: Pooling layers (Max, Average) with configurable shapes
+- **Activation**: ReLU, LeakyReLU, ELU, Sigmoid, TanH, SoftMax, Swish, GELU, **Pic** (trainable)
 - **Regularization**: Dropout, BatchNormalization
 - **Recurrent**: RNN, LSTM with gate mechanisms
-- **Utility**: Flatten for shape conversion, KNN, RandomForest layers
+- **Utility**: Flatten for shape conversion, KNN, RandomForest, KNN, RBF Kernel layers
 
 ### Optimizers & Features
 - **Optimizers**: SGD, SGD+Momentum, Adam with L1/L2 regularization
@@ -156,10 +166,24 @@ All layers inherit from `BaseLayer` and implement:
 - **Visualization**: Interactive architecture plots and real-time training monitoring
 - **Dataset Management**: Standard train/validation/test splits (65%/15%/20%) with configurable ratios
 
-## Testing & Validation
+### Testing & Validation
 
-### Gradient Check
-Validates layer implementations by comparing analytical gradients with numerical gradients:
+- **Notebooks**: Interactive Jupyter notebooks for testing various models and datasets
+  - [`Models\classics\kNN.ipynb`](Models\classics\kNN.ipynb): kNN implementation with Digits dataset
+  - [`Models\classics\SVM.ipynb`](Models\classics\SVM.ipynb): SVM implementation with Digits and Cifar dataset
+  - [`Models\classics\Linear.ipynb`](Models\classics\Linear.ipynb): Linear classifier with Digits, MNIST, RandomData, Cifar, Caltech101 and Iris datasets
+  - [`Models\classics\2LayersNN.ipynb`](Models\classics\2LayersNN.ipynb): 2 layers NN with MNIST
+  - [`Models\classics\illustration_NTK.ipynb`](Models\classics\illustration_NTK.ipynb): Neural Tangent Kernel illustration with theoretical mean-field limit
+  - [`Models\classics\RandomForest.ipynb`](Models\classics\RandomForest.ipynb): Random Forest implementation with Digits and Cifar datasets
+  - [`Models\classics\CNN.ipynb`](Models\classics\CNN.ipynb): Testing CNN architecture
+  - [`Models\arranged_max_law_predictor.ipynb`](Models\classics\arranged_max_law_predictor.ipynb): Predictor for Arranged Max Law dataset
+  - [`Models\LeNet.ipynb`](Models\classics\LeNet.ipynb): LeNet-5 CNN architecture
+  - [`Models\Pic_activation.ipynb`](Models\Pic_activation.ipynb): Testing Pic activation function
+  -  [`Models\classics\waitParkRegression.ipynb`](Models\classics\waitParkRegression.ipynb): Regression example with WaitPark dataset
+
+- **Unit Tests**: Comprehensive tests for all layers and optimizers (in [`Helpers\NeuralNetworkTests.py`](Helpers\NeuralNetworkTests.py))
+
+- **Gradient Check**: Validates layer implementations by comparing analytical gradients with numerical gradients (Use `gradient_check` to validate custom layer implementations)
 
 ```python
 from Helpers.Helpers import gradient_check
@@ -168,23 +192,3 @@ layer = FullyConnected(10, 5)
 layer.initialize(He(), None)
 gradient_check(layer, np.random.random((3, 10)))
 ```
-
-## Visualization Examples
-
-### Network Architecture Visualization
-The framework provides detailed architecture visualization for understanding network structure:
-
-![CNN Architecture Visualization](Models/classics/archi_cnn.png)
-*Example of CNN architecture plot showing layers, connections, and parameter counts*
-
-### Parameter Visualization
-For networks with few parameters, the framework can visualize learned weights:
-
-![Learned Weights Visualization](Models/classics/learned_weights_caltech_linear.png)
-*Example of learned weight visualization for a linear classifier on Caltech dataset*
-
-## Usage Notes
-- Networks with <200 parameters show detailed parameter visualization
-- Training automatically computes validation metrics when available
-- All datasets use standard splits with configurable validation ratios
-- Use `gradient_check` to validate custom layer implementations
